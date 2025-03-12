@@ -12,7 +12,7 @@ data class InputData(val identifier: String, val contents: BufferedReader) {
 
 data class Token(val value: String, val line: Int, val column: Int)
 
-data class Tokenizer(val data: InputData): Iterator<Token> {
+internal data class Tokenizer(val data: InputData): Iterator<Token> {
     private val lines = data.contents.lineSequence().iterator()
 
     private var currentLineNumber = 1

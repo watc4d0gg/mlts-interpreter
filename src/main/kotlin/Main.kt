@@ -5,14 +5,21 @@ import kotlin.system.exitProcess
 import kotlin.system.measureTimeMillis
 
 fun main(vararg args: String) {
-    val argMap = args.toList().chunked(2) { it[0] to it[1] }.toMap()
+    val argMap: MutableMap<String, MutableList<String>> = mutableMapOf()
+    args.toList().fold("") { lastArg, arg ->
+        if (arg.startsWith("-")) {
+            argMap[arg] = mutableListOf()
+            arg
+        } else {
+            argMap[lastArg]?.add(arg)
+            lastArg
+        }
+    }
 
     // Interpret an input file
-    argMap["-f"]?.let { filepath ->
+    argMap["-f"]?.let { (filepath) ->
         try {
-            File(filepath)
-                .parse()
-                .forEach { println(it.toPrettyString()) }
+            File(filepath).parse().eval()
         } catch (e: SyntaxException) {
             System.err.println(e.message)
             exitProcess(1)
@@ -20,20 +27,22 @@ fun main(vararg args: String) {
         return
     }
 
+    val debug = argMap["-g"] != null
+    val environment: Environment = mutableMapOf()
+
     // Initialise REPL
     while (true) {
         print("MLTS> ")
         try {
             when (val input = readlnOrNull()) {
-                null, "quit", "exit" -> {
-                    break
-                }
+                null, "quit", "exit" -> break
                 else -> {
                     if (input.startsWith(":timing")) {
                         val time = measureTimeMillis {
                             input.substringAfter(":timing ")
                                 .parse()
-                                .forEach { println(it.toPrettyString()) }
+                                .eval(environment = environment)
+                                .forEach { println(it) }
                         }
                         println("Took ${time}ms")
                     } else if (input.startsWith(":lex")) {
@@ -46,14 +55,25 @@ fun main(vararg args: String) {
                         input.substringAfter(":parse ")
                             .parse()
                             .apply { println(this) }
+                    } else if (input.startsWith(":debug")) {
+                        input.substringAfter(":debug ")
+                            .parse()
+                            .eval(environment = environment, debug = true)
+                            .forEach { println(it) }
                     } else {
-                        input.parse().forEach { println(it.toPrettyString()) }
+                        input.parse()
+                            .eval(environment = environment, debug = debug)
+                            .forEach { println(it) }
                     }
                 }
             }
         } catch (e: Exception) {
             when (e) {
                 is SyntaxException -> println(e.message)
+                is DebugStopException -> {
+                    println("Stopping the debugger...")
+                    continue
+                }
                 is EOFException -> break
                 else -> {
                     e.printStackTrace()
