@@ -75,11 +75,10 @@ internal val LOGICAL_OPERATORS = createEvaluations {
 }
 
 internal fun Interpreter.logical(primitive: PrimType, arguments: List<Expr>): Value {
-    if (primitive == NOT && arguments.size != 1) {
-        throw EvalException("\'not\' requires exactly one argument")
-    }
-    if (primitive != IF && arguments.size != 2 || primitive == IF && arguments.size != 3) {
-        throw EvalException("\'${primitive.symbol}\' requires exactly two${if (primitive == IF) " or three" else ""} arguments")
+    when (primitive) {
+        NOT -> if (arguments.size != 1) throw EvalException("\'not\' requires exactly one argument")
+        IF  -> if (arguments.size != 3) throw EvalException("\'if\' requires exactly three arguments")
+        else -> if (arguments.size != 2) throw EvalException("\'${primitive.symbol}\' requires exactly two arguments")
     }
     return LOGICAL_OPERATORS[primitive]?.let { it(arguments) } ?: throw EvalException("Unsupported logical operation ${primitive.symbol}")
 }

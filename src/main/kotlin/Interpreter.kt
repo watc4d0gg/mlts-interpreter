@@ -131,8 +131,9 @@ internal sealed interface Interpreter {
             }
 
         override fun shortCircuit(target: Expr) {
-            currentContext!!.registerShortCircuit(target)
-            step()
+            if (currentContext!!.registerShortCircuit(target)) {
+                step()
+            }
         }
 
         override fun substitute(target: Expr, value: Value) {
@@ -156,10 +157,10 @@ private data class DebugContext(var mainExpression: Expr) {
     private val substitutions: MutableMap<Expr, Value> = IdentityHashMap()
     private val previousExpressions: MutableSet<Expr> = Collections.newSetFromMap(IdentityHashMap())
 
-    fun registerShortCircuit(target: Expr) {
+    fun registerShortCircuit(target: Expr): Boolean {
         previousExpressions.add(mainExpression)
         mainExpression = target
-        substitutions.clear()
+        return substitutions[mainExpression] == null
     }
 
     fun registerSubstitution(target: Expr, value: Value): Boolean {
