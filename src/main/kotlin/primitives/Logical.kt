@@ -3,15 +3,15 @@ package primitives
 import EvalException
 import Expr
 import Interpreter
-import PrimFunc
+import PrimType
 import Value
 import createEvaluations
 
 // Logical operators
-private val NOT = PrimFunc("not")
-private val AND = PrimFunc("and")
-private val OR = PrimFunc("or")
-private val IF = PrimFunc("if")
+private val NOT = PrimType("not")
+private val AND = PrimType("and")
+private val OR = PrimType("or")
+private val IF = PrimType("if")
 
 internal val LOGICAL_OPERATORS = createEvaluations {
     // NOT
@@ -31,7 +31,7 @@ internal val LOGICAL_OPERATORS = createEvaluations {
                     else -> throw EvalException("$v2 is not a bool")
                 }
                 false -> {
-                    debugger?.shortCircuit(e1)
+                    shortCircuit(e1)
                     v1
                 }
             }
@@ -44,7 +44,7 @@ internal val LOGICAL_OPERATORS = createEvaluations {
         when (val v1 = e1.eval()) {
             is Value.Bool -> when (v1.value) {
                 true -> {
-                    debugger?.shortCircuit(e1)
+                    shortCircuit(e1)
                     v1
                 }
                 false -> when (val v2 = e2.eval()) {
@@ -61,11 +61,11 @@ internal val LOGICAL_OPERATORS = createEvaluations {
         when (val v1 = e1.eval()) {
             is Value.Bool -> when (v1.value) {
                 true -> {
-                    debugger?.shortCircuit(e2)
+                    shortCircuit(e2)
                     e2.eval()
                 }
                 false -> {
-                    debugger?.shortCircuit(e3)
+                    shortCircuit(e3)
                     e3.eval()
                 }
             }
@@ -74,7 +74,7 @@ internal val LOGICAL_OPERATORS = createEvaluations {
     }
 }
 
-internal fun Interpreter.logical(primitive: PrimFunc, arguments: List<Expr>): Value {
+internal fun Interpreter.logical(primitive: PrimType, arguments: List<Expr>): Value {
     if (primitive == NOT && arguments.size != 1) {
         throw EvalException("\'not\' requires exactly one argument")
     }

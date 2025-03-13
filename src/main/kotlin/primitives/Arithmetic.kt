@@ -4,15 +4,15 @@ import Expr
 import Value
 import EvalException
 import Interpreter
-import PrimFunc
+import PrimType
 import createEvaluations
 
 // Arithmetic
-private val ADD = PrimFunc("+")
-private val SUB = PrimFunc("-")
-private val MUL = PrimFunc("*")
-private val DIV = PrimFunc("/")
-private val MOD = PrimFunc("%")
+private val ADD = PrimType("+")
+private val SUB = PrimType("-")
+private val MUL = PrimType("*")
+private val DIV = PrimType("/")
+private val MOD = PrimType("%")
 
 internal val ARITHMETIC_OPERATORS = createEvaluations {
     // ADDITION
@@ -107,7 +107,7 @@ internal val ARITHMETIC_OPERATORS = createEvaluations {
     }
 }
 
-internal fun Interpreter.arithmetic(primitive: PrimFunc, arguments: List<Expr>): Value {
+internal fun Interpreter.arithmetic(primitive: PrimType, arguments: List<Expr>): Value {
     if (primitive == SUB && arguments.size != 1 && arguments.size != 2 || primitive != SUB && arguments.size != 2) {
         throw EvalException("\'${primitive.symbol}\' requires exactly ${if (primitive == SUB) "one or " else ""}two arguments")
     }

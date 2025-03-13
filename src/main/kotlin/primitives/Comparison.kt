@@ -4,16 +4,16 @@ import Expr
 import Value
 import EvalException
 import Interpreter
-import PrimFunc
+import PrimType
 import createEvaluations
 
 // Comparisons
-private val EQ = PrimFunc("=")
-private val NE = PrimFunc("!=")
-private val LT = PrimFunc("<")
-private val GT = PrimFunc(">")
-private val LEQ = PrimFunc("<=")
-private val GEQ = PrimFunc(">=")
+private val EQ = PrimType("=")
+private val NE = PrimType("!=")
+private val LT = PrimType("<")
+private val GT = PrimType(">")
+private val LEQ = PrimType("<=")
+private val GEQ = PrimType(">=")
 
 internal val COMPARISON_OPERATORS = createEvaluations {
     // EQUALITY
@@ -108,7 +108,7 @@ internal val COMPARISON_OPERATORS = createEvaluations {
     }
 }
 
-internal fun Interpreter.comparisons(primitive: PrimFunc, arguments: List<Expr>): Value {
+internal fun Interpreter.comparisons(primitive: PrimType, arguments: List<Expr>): Value {
     if (arguments.size != 2) {
         throw EvalException("\'${primitive.symbol}\' requires exactly two arguments")
     }

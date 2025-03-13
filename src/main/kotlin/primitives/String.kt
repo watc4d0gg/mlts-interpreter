@@ -3,7 +3,7 @@ package primitives
 import Expr
 import EvalException
 import Interpreter
-import PrimFunc
+import PrimType
 import Value
 import createEvaluations
 
@@ -59,7 +59,7 @@ internal val STRING_OPERATIONS = createEvaluations {
     }
 }
 
-internal fun Interpreter.string(primitive: PrimFunc, arguments: List<Expr>): Value {
+internal fun Interpreter.string(primitive: PrimType, arguments: List<Expr>): Value {
     if (primitive != SUBSTRING && arguments.size != 2 || primitive == SUBSTRING && arguments.size != 2 && arguments.size != 3) {
         throw EvalException("\'${primitive.symbol}\' requires exactly two${if (primitive == SUBSTRING) " or three" else ""} arguments")
     }

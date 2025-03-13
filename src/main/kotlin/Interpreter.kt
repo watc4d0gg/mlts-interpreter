@@ -1,12 +1,12 @@
 import primitives.*
 import java.util.*
 
-internal typealias PrimFunc = Expr.LSym
-internal typealias Evaluator = Map<PrimFunc, Interpreter.(List<Expr>) -> Value>
+internal typealias PrimType = Expr.LSym
+internal typealias Evaluator = Map<PrimType, Interpreter.(List<Expr>) -> Value>
 
 internal class EvaluatorBuilder(initial: Evaluator = mapOf())
-    : MutableMap<PrimFunc, Interpreter.(List<Expr>) -> Value> by initial.toMutableMap() {
-    operator fun PrimFunc.plusAssign(evaluation: Interpreter.(List<Expr>) -> Value) {
+    : MutableMap<PrimType, Interpreter.(List<Expr>) -> Value> by initial.toMutableMap() {
+    operator fun PrimType.plusAssign(evaluation: Interpreter.(List<Expr>) -> Value) {
         this@EvaluatorBuilder[this] = evaluation
     }
 }
@@ -48,7 +48,7 @@ sealed class Value {
         override fun toString(): String = expression.prettyString
     }
 
-    data class Primitive(val name: String) : Value() {
+    data class Prim(val name: String) : Value() {
         override fun toString() = name
     }
 
@@ -60,22 +60,17 @@ sealed class Value {
 // TODO: type checking
 typealias Environment = MutableMap<String, Value>
 
-fun Program.eval(environment: Environment = mutableMapOf(), debug: Boolean = false) = Interpreter(environment, debug).evaluate(this)
+fun Program.eval(environment: Environment = mutableMapOf()) = Interpreter.Default.eval(this, environment)
 
-internal data class Interpreter(
-    val environment: Environment = mutableMapOf(),
-    private val debug: Boolean = false) {
+fun Program.debug(environment: Environment = mutableMapOf()) = Interpreter.Debugger().eval(this, environment)
 
-    var debugger: Debugger? = null
-        private set
+internal sealed interface Interpreter {
 
-    fun evaluate(program: Program): Sequence<Value> = program
-        .asSequence()
-        .map {
-            if (debug && it is Expr.SExpr) debugger = Debugger(it)
-            // TODO: declarations
-            it.eval()
-        }
+    fun shortCircuit(target: Expr)
+
+    fun substitute(target: Expr, value: Value)
+
+    fun eval(program: Program, environment: Environment = mutableMapOf()): Sequence<Value> = program.asSequence().map { it.eval() }
 
     fun Expr.eval(): Value = when(this) {
         is Expr.LInt -> Value.Int(value)
@@ -83,7 +78,7 @@ internal data class Interpreter(
         is Expr.LBool -> Value.Bool(value)
         is Expr.LStr -> Value.Str(value)
         is Expr.LSym -> when (this) {
-            in PRIMITIVE_FUNCTIONS -> Value.Primitive(symbol)
+            in PRIMITIVE_FUNCTIONS -> Value.Prim(symbol)
             else -> throw EvalException("\'$symbol\' is an unknown symbol")
         }
         is Expr.SExpr -> {
@@ -105,67 +100,100 @@ internal data class Interpreter(
                 }
                 else -> throw EvalException("\'${expr.prettyString}\' doesn't evaluate to a function or primitive")
             }
-            debugger?.substitute(this, result)
+            substitute(this, result)
             result
+        }
+    }
+
+    /**
+     * Default interpreter with no instrumentation
+     */
+    data object Default : Interpreter {
+        override fun shortCircuit(target: Expr) {
+        }
+
+        override fun substitute(target: Expr, value: Value) {
+        }
+    }
+
+    /**
+     * Debugging interpreter allowing for step debug mode
+     */
+    class Debugger : Interpreter {
+        private var currentContext: DebugContext? = null
+
+        override fun eval(program: Program, environment: Environment): Sequence<Value> = program
+            .asSequence()
+            .map {
+                currentContext = DebugContext(it)
+                step()
+                it.eval()
+            }
+
+        override fun shortCircuit(target: Expr) {
+            currentContext!!.registerShortCircuit(target)
+            step()
+        }
+
+        override fun substitute(target: Expr, value: Value) {
+            if (currentContext!!.registerSubstitution(target, value)) {
+                step()
+            }
+        }
+
+        private fun step() {
+            println(currentContext!!.currentEvaluation())
+            print("Step? ")
+            when (readlnOrNull()) {
+                null, "exit", "quit" -> throw DebugStopException()
+                else -> return
+            }
         }
     }
 }
 
-internal class DebugStopException: Exception()
-
-internal data class Debugger(private var mainExpression: Expr) {
+private data class DebugContext(var mainExpression: Expr) {
     private val substitutions: MutableMap<Expr, Value> = IdentityHashMap()
     private val previousExpressions: MutableSet<Expr> = Collections.newSetFromMap(IdentityHashMap())
 
-    init {
-        step()
-    }
-
-    private fun step() {
-        println(mainExpression.currentEvaluation())
-        print("Step? ")
-        when (readlnOrNull()) {
-            null, "exit", "quit" -> throw DebugStopException()
-            else -> return
-        }
-    }
-
-    fun shortCircuit(target: Expr) {
+    fun registerShortCircuit(target: Expr) {
         previousExpressions.add(mainExpression)
         mainExpression = target
         substitutions.clear()
-        step()
     }
 
-    fun substitute(target: Expr, value: Value) {
+    fun registerSubstitution(target: Expr, value: Value): Boolean {
         if (target === mainExpression || target in previousExpressions) {
-            return
+            return false
         }
-        substitutions[target] = value
-        step()
+        return substitutions.put(target, value) == null
     }
 
-    private fun Expr.currentEvaluation(indent: String = ""): String {
+    fun currentEvaluation(): String = mainExpression.prettyEvaluation()
+
+    private fun Expr.prettyEvaluation(indent: String = ""): String {
         if (substitutions[this] != null) {
             return "${substitutions[this]}"
         }
         return when (this) {
             is Expr.SExpr -> {
                 if (expressions.size > 3) {
-                    val nextIndent = "$indent${" ".repeat(expressions[0].currentEvaluation().length + 2)}"
-                    val firstLine = "${expressions[0].currentEvaluation()} ${expressions[1].currentEvaluation()}"
+                    val nextIndent = "$indent${" ".repeat(expressions[0].prettyEvaluation().length + 2)}"
+                    val firstLine = "${expressions[0].prettyEvaluation()} ${expressions[1].prettyEvaluation()}"
                     val nextLines = expressions.subList(2, expressions.size).joinToString("\n") {
                         when (it) {
-                            is Expr.SExpr -> "$nextIndent${it.currentEvaluation(indent = nextIndent)}"
-                            else -> "$nextIndent${it.currentEvaluation()}"
+                            is Expr.SExpr -> "$nextIndent${it.prettyEvaluation(indent = nextIndent)}"
+                            else -> "$nextIndent${it.prettyEvaluation()}"
                         }
                     }
                     "($firstLine\n$nextLines)"
                 } else {
-                    expressions.joinToString(" ", "(", ")") { it.currentEvaluation() }
+                    expressions.joinToString(" ", "(", ")") { it.prettyEvaluation() }
                 }
             }
             else -> prettyString
         }
     }
 }
+
+internal class DebugStopException: Exception()

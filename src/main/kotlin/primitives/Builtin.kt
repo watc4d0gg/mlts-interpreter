@@ -3,14 +3,14 @@ package primitives
 import EvalException
 import Expr
 import Interpreter
-import PrimFunc
+import PrimType
 import Value
 import createEvaluations
 
 // Builtins
-private val ID = PrimFunc("id")
-private val PRINT = PrimFunc("print")
-private val INPUT = PrimFunc("input")
+private val ID = PrimType("id")
+private val PRINT = PrimType("print")
+private val INPUT = PrimType("input")
 
 internal val BUILTIN_FUNCTIONS = createEvaluations {
     // IDENTITY
@@ -45,6 +45,6 @@ internal val BUILTIN_FUNCTIONS = createEvaluations {
     }
 }
 
-internal fun Interpreter.builtin(primitive: PrimFunc, arguments: List<Expr>): Value {
+internal fun Interpreter.builtin(primitive: PrimType, arguments: List<Expr>): Value {
     return BUILTIN_FUNCTIONS[primitive]?.let { it(arguments) } ?: throw EvalException("Unsupported builtin function ${primitive.symbol}")
 }

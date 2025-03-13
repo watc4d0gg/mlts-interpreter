@@ -58,11 +58,11 @@ fun main(vararg args: String) {
                     } else if (input.startsWith(":debug")) {
                         input.substringAfter(":debug ")
                             .parse()
-                            .eval(environment = environment, debug = true)
+                            .debug(environment)
                             .forEach { println(it) }
                     } else {
                         input.parse()
-                            .eval(environment = environment, debug = debug)
+                            .eval(environment)
                             .forEach { println(it) }
                     }
                 }
