@@ -1,11 +1,6 @@
 package primitives
 
-import Expr
-import EvalException
-import Interpreter
-import PrimType
-import Value
-import createEvaluations
+import internals.EvalException
 
 // String operations
 private val CONCAT = Expr.LSym("++")
@@ -13,9 +8,13 @@ private val SUBSTRING = Expr.LSym("substr")
 
 internal val STRING_OPERATIONS = createEvaluations {
     // CONCATENATION
-    CONCAT += { (e1, e2) ->
-        when (val v1 = e1.eval()) {
-            is Value.Str -> when (val v2 = e2.eval()) {
+    CONCAT += { arguments, environment ->
+        if (arguments.size != 2) {
+            throw EvalException("\'++\' requires exactly two arguments")
+        }
+        val (e1, e2) = arguments
+        when (val v1 = e1.eval(environment)) {
+            is Value.Str -> when (val v2 = e2.eval(environment)) {
                 is Value.Str -> Value.Str(v1.value + v2.value)
                 else -> throw EvalException("$v2 is not a str")
             }
@@ -24,11 +23,14 @@ internal val STRING_OPERATIONS = createEvaluations {
     }
 
     // SUBSTRING
-    SUBSTRING += { arguments ->
+    SUBSTRING += { arguments, environment ->
+        if (arguments.size != 2 && arguments.size != 3) {
+            throw EvalException("\'substr\' requires exactly two or three arguments")
+        }
         if (arguments.size == 2) {
             val (e1, e2) = arguments
-            when (val v1 = e1.eval()) {
-                is Value.Str -> when (val v2 = e2.eval()) {
+            when (val v1 = e1.eval(environment)) {
+                is Value.Str -> when (val v2 = e2.eval(environment)) {
                     is Value.Int -> when (v2.value) {
                         in 0 until v1.value.length -> Value.Str(v1.value.substring(v2.value))
                         else -> throw EvalException("Invalid start index $v2")
@@ -39,10 +41,10 @@ internal val STRING_OPERATIONS = createEvaluations {
             }
         } else {
             val (e1, e2, e3) = arguments
-            when (val v1 = e1.eval()) {
-                is Value.Str -> when (val v2 = e2.eval()) {
+            when (val v1 = e1.eval(environment)) {
+                is Value.Str -> when (val v2 = e2.eval(environment)) {
                     is Value.Int -> when (v2.value) {
-                        in 0 until v1.value.length -> when (val v3 = e3.eval()) {
+                        in 0 until v1.value.length -> when (val v3 = e3.eval(environment)) {
                             is Value.Int -> when (v3.value) {
                                 in 0..v1.value.length -> Value.Str(v1.value.substring(v2.value, v3.value))
                                 else -> throw EvalException("Invalid end index $v3")
@@ -57,11 +59,4 @@ internal val STRING_OPERATIONS = createEvaluations {
             }
         }
     }
-}
-
-internal fun Interpreter.string(primitive: PrimType, arguments: List<Expr>): Value {
-    if (primitive != SUBSTRING && arguments.size != 2 || primitive == SUBSTRING && arguments.size != 2 && arguments.size != 3) {
-        throw EvalException("\'${primitive.symbol}\' requires exactly two${if (primitive == SUBSTRING) " or three" else ""} arguments")
-    }
-    return STRING_OPERATIONS[primitive]?.let { it(arguments) } ?: throw EvalException("Unsupported string operation ${primitive.symbol}")
 }

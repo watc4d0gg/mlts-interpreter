@@ -1,3 +1,6 @@
+import internals.*
+import internals.DebugStopException
+import internals.SyntaxException
 import java.io.EOFException
 import java.io.File
 import java.util.*
@@ -35,46 +38,41 @@ fun main(vararg args: String) {
         print("MLTS> ")
         try {
             when (val input = readlnOrNull()) {
-                null, "quit", "exit" -> break
+                null, "quit", "exit", -> break
+                "" -> continue
                 else -> {
                     if (input.startsWith(":timing")) {
                         val time = measureTimeMillis {
-                            input.substringAfter(":timing ")
-                                .parse()
-                                .eval(environment = environment)
-                                .forEach { println(it) }
+                            input.substringAfter(":timing ").parse().eval(environment).forEach { println(it) }
                         }
                         println("Took ${time}ms")
                     } else if (input.startsWith(":lex")) {
-                        Tokenizer(InputData(input.substringAfter(":lex ")))
+                        input.substringAfter(":lex ")
+                            .tokenize()
                             .asSequence()
-                            .map { it.value }
                             .toCollection(LinkedList())
                             .apply { println(this) }
                     } else if (input.startsWith(":parse")) {
-                        input.substringAfter(":parse ")
-                            .parse()
-                            .apply { println(this) }
-                    } else if (input.startsWith(":debug")) {
-                        input.substringAfter(":debug ")
-                            .parse()
-                            .debug(environment)
-                            .forEach { println(it) }
+                        input.substringAfter(":parse ").parse().apply { println(this) }
+                    } else if (input.startsWith(":debug") || debug) {
+                        input.substringAfter(":debug ").parse().debug(environment).forEach { println(it) }
+                    } else if (input.startsWith(":env")) {
+                        println(environment.prettyString)
+                    } else if (input.startsWith(":clearenv")) {
+                        environment.clear()
                     } else {
-                        input.parse()
-                            .eval(environment)
-                            .forEach { println(it) }
+                        input.parse().eval(environment).forEach { println(it) }
                     }
                 }
             }
         } catch (e: Exception) {
             when (e) {
-                is SyntaxException -> println(e.message)
+                is EOFException -> break
+                is SyntaxException, is EvalException -> println(e.message)
                 is DebugStopException -> {
                     println("Stopping the debugger...")
                     continue
                 }
-                is EOFException -> break
                 else -> {
                     e.printStackTrace()
                     break

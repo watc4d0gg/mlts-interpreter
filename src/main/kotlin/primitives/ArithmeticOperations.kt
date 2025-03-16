@@ -1,11 +1,6 @@
 package primitives
 
-import Expr
-import Value
-import EvalException
-import Interpreter
-import PrimType
-import createEvaluations
+import internals.EvalException
 
 // Arithmetic
 private val ADD = PrimType("+")
@@ -16,15 +11,19 @@ private val MOD = PrimType("%")
 
 internal val ARITHMETIC_OPERATORS = createEvaluations {
     // ADDITION
-    ADD += { (e1, e2) ->
-        when (val v1 = e1.eval()) {
-            is Value.Int -> when (val v2 = e2.eval()) {
+    ADD += { arguments, environment ->
+        if (arguments.size != 2) {
+            throw EvalException("\'+\' requires exactly two arguments")
+        }
+        val (e1, e2) = arguments
+        when (val v1 = e1.eval(environment)) {
+            is Value.Int -> when (val v2 = e2.eval(environment)) {
                 is Value.Int -> Value.Int(v1.value + v2.value)
                 is Value.Float -> Value.Float(v1.value + v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
             }
 
-            is Value.Float -> when (val v2 = e2.eval()) {
+            is Value.Float -> when (val v2 = e2.eval(environment)) {
                 is Value.Int -> Value.Float(v1.value + v2.value)
                 is Value.Float -> Value.Float(v1.value + v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
@@ -35,23 +34,26 @@ internal val ARITHMETIC_OPERATORS = createEvaluations {
     }
 
     // NEGATION/SUBTRACTION
-    SUB += { arguments ->
+    SUB += { arguments, environment ->
+        if (arguments.size != 1 && arguments.size != 2) {
+            throw EvalException("\'-\' requires exactly one or two arguments")
+        }
         if (arguments.size == 1) {
             val (e) = arguments
-            when (val v = e.eval()) {
+            when (val v = e.eval(environment)) {
                 is Value.Int -> Value.Int(-v.value)
                 is Value.Float -> Value.Float(-v.value)
                 else -> throw EvalException("$v is not an int nor a float")
             }
         } else {
             val (e1, e2) = arguments
-            when (val v1 = e1.eval()) {
-                is Value.Int -> when (val v2 = e2.eval()) {
+            when (val v1 = e1.eval(environment)) {
+                is Value.Int -> when (val v2 = e2.eval(environment)) {
                     is Value.Int -> Value.Int(v1.value - v2.value)
                     is Value.Float -> Value.Float(v1.value - v2.value)
                     else -> throw EvalException("$v2 is not an int nor a float")
                 }
-                is Value.Float -> when (val v2 = e2.eval()) {
+                is Value.Float -> when (val v2 = e2.eval(environment)) {
                     is Value.Int -> Value.Float(v1.value - v2.value)
                     is Value.Float -> Value.Float(v1.value - v2.value)
                     else -> throw EvalException("$v2 is not an int nor a float")
@@ -62,14 +64,18 @@ internal val ARITHMETIC_OPERATORS = createEvaluations {
     }
 
     // MULTIPLICATION
-    MUL += { (e1, e2) ->
-        when (val v1 = e1.eval()) {
-            is Value.Int -> when (val v2 = e2.eval()) {
+    MUL += { arguments, environment ->
+        if (arguments.size != 2) {
+            throw EvalException("\'*\' requires exactly two arguments")
+        }
+        val (e1, e2) = arguments
+        when (val v1 = e1.eval(environment)) {
+            is Value.Int -> when (val v2 = e2.eval(environment)) {
                 is Value.Int -> Value.Int(v1.value * v2.value)
                 is Value.Float -> Value.Float(v1.value * v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
             }
-            is Value.Float -> when (val v2 = e2.eval()) {
+            is Value.Float -> when (val v2 = e2.eval(environment)) {
                 is Value.Int -> Value.Float(v1.value * v2.value)
                 is Value.Float -> Value.Float(v1.value * v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
@@ -79,14 +85,18 @@ internal val ARITHMETIC_OPERATORS = createEvaluations {
     }
 
     // DIVISION
-    DIV += { (e1, e2) ->
-        when (val v1 = e1.eval()) {
-            is Value.Int -> when (val v2 = e2.eval()) {
+    DIV += { arguments, environment ->
+        if (arguments.size != 2) {
+            throw EvalException("\'/\' requires exactly two arguments")
+        }
+        val (e1, e2) = arguments
+        when (val v1 = e1.eval(environment)) {
+            is Value.Int -> when (val v2 = e2.eval(environment)) {
                 is Value.Int -> Value.Float(v1.value.toDouble() / v2.value.toDouble())
                 is Value.Float -> Value.Float(v1.value / v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
             }
-            is Value.Float -> when (val v2 = e2.eval()) {
+            is Value.Float -> when (val v2 = e2.eval(environment)) {
                 is Value.Int -> Value.Float(v1.value / v2.value)
                 is Value.Float -> Value.Float(v1.value / v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
@@ -96,20 +106,17 @@ internal val ARITHMETIC_OPERATORS = createEvaluations {
     }
 
     // MODULO
-    MOD += { (e1, e2) ->
-        when (val v1 = e1.eval()) {
-            is Value.Int -> when (val v2 = e2.eval()) {
+    MOD += { arguments, environment ->
+        if (arguments.size != 2) {
+            throw EvalException("\'%\' requires exactly two arguments")
+        }
+        val (e1, e2) = arguments
+        when (val v1 = e1.eval(environment)) {
+            is Value.Int -> when (val v2 = e2.eval(environment)) {
                 is Value.Int -> Value.Int(v1.value % v2.value)
                 else -> throw EvalException("$v2 is not an int")
             }
             else -> throw EvalException("$v1 is not an int")
         }
     }
-}
-
-internal fun Interpreter.arithmetic(primitive: PrimType, arguments: List<Expr>): Value {
-    if (primitive == SUB && arguments.size != 1 && arguments.size != 2 || primitive != SUB && arguments.size != 2) {
-        throw EvalException("\'${primitive.symbol}\' requires exactly ${if (primitive == SUB) "one or " else ""}two arguments")
-    }
-    return ARITHMETIC_OPERATORS[primitive]?.let { it(arguments) } ?: throw EvalException("Unsupported arithmetic operation ${primitive.symbol}")
 }

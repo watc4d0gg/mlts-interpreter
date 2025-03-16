@@ -1,16 +1,11 @@
-import java.io.BufferedReader
-import java.io.File
+package internals
+
+import InputData
+import Token
 import java.util.*
 
 // https://stackoverflow.com/a/9584469
 private val TOKENIZER_REGEX = Regex("\\s+(?=((\\\\[\\\\\"]|[^\\\\\"])*\"(\\\\[\\\\\"]|[^\\\\\"])*\")*(\\\\[\\\\\"]|[^\\\\\"])*\$)")
-
-data class InputData(val identifier: String, val contents: BufferedReader) {
-    constructor(replInput: String) : this("REPL", BufferedReader(replInput.reader()))
-    constructor(file: File) : this(file.name, file.reader().buffered())
-}
-
-data class Token(val value: String, val line: Int, val column: Int)
 
 internal data class Tokenizer(val data: InputData): Iterator<Token> {
     private val lines = data.contents.lineSequence().iterator()
