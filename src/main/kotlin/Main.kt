@@ -22,7 +22,7 @@ fun main(vararg args: String) {
     // Interpret an input file
     argMap["-f"]?.let { (filepath) ->
         try {
-            File(filepath).parse().eval()
+            File(filepath).parse().eval().forEach { println(it) }
         } catch (e: SyntaxException) {
             System.err.println(e.message)
             exitProcess(1)

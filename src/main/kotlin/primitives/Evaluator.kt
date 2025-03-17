@@ -1,8 +1,8 @@
 package primitives
 
+import Environment
 import Expr
 import Value
-import Environment
 import internals.EvalContext
 
 internal typealias PrimType = Expr.LSym
@@ -12,7 +12,7 @@ internal typealias Evaluator = Map<String, Evaluation>
 /**
  * A class describing a primitive function evaluator
  */
-internal class EvaluatorBuilder: MutableMap<String, Evaluation> by mutableMapOf() {
+internal class EvaluatorBuilder : MutableMap<String, Evaluation> by mutableMapOf() {
 
     operator fun PrimType.plusAssign(evaluation: Evaluation) {
         this@EvaluatorBuilder[symbol] = evaluation

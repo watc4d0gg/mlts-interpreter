@@ -1,5 +1,6 @@
 package primitives
 
+import Value
 import internals.EvalException
 
 // Logical operators
@@ -29,17 +30,14 @@ internal val LOGICAL_OPERATORS = createEvaluations {
         val (e1, e2) = arguments
         when (val v1 = e1.eval(environment)) {
             is Value.Bool -> when (v1.value) {
-                true -> when (val v2 = e2.eval(environment)) {
-                    is Value.Bool -> {
-                        shortCircuit(e1)
-                        v2
+                true -> {
+                    shortCircuit()
+                    when (val v2 = e2.eval(environment)) {
+                        is Value.Bool -> v2
+                        else -> throw EvalException("$v2 is not a bool")
                     }
-                    else -> throw EvalException("$v2 is not a bool")
                 }
-                false -> {
-                    shortCircuit(e1)
-                    v1
-                }
+                false -> v1
             }
             else -> throw EvalException("$v1 is not a bool")
         }
@@ -53,16 +51,13 @@ internal val LOGICAL_OPERATORS = createEvaluations {
         val (e1, e2) = arguments
         when (val v1 = e1.eval(environment)) {
             is Value.Bool -> when (v1.value) {
-                true -> {
-                    shortCircuit(e1)
-                    v1
-                }
-                false -> when (val v2 = e2.eval(environment)) {
-                    is Value.Bool -> {
-                        shortCircuit(e2)
-                        v2
+                true -> v1
+                false -> {
+                    shortCircuit()
+                    when (val v2 = e2.eval(environment)) {
+                        is Value.Bool -> v2
+                        else -> throw EvalException("$v2 is not a bool")
                     }
-                    else -> throw EvalException("$v2 is not a bool")
                 }
             }
             else -> throw EvalException("$v1 is not a bool")
@@ -78,11 +73,11 @@ internal val LOGICAL_OPERATORS = createEvaluations {
         when (val v1 = e1.eval(environment)) {
             is Value.Bool -> when (v1.value) {
                 true -> {
-                    shortCircuit(e2)
+                    shortCircuit()
                     e2.eval(environment)
                 }
                 false -> {
-                    shortCircuit(e3)
+                    shortCircuit()
                     e3.eval(environment)
                 }
             }

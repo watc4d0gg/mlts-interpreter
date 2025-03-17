@@ -1,5 +1,6 @@
 package primitives
 
+import Value
 import internals.EvalException
 
 // Arithmetic
@@ -22,13 +23,11 @@ internal val ARITHMETIC_OPERATORS = createEvaluations {
                 is Value.Float -> Value.Float(v1.value + v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
             }
-
             is Value.Float -> when (val v2 = e2.eval(environment)) {
                 is Value.Int -> Value.Float(v1.value + v2.value)
                 is Value.Float -> Value.Float(v1.value + v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
             }
-
             else -> throw EvalException("$v1 is not an int nor a float")
         }
     }
@@ -53,11 +52,13 @@ internal val ARITHMETIC_OPERATORS = createEvaluations {
                     is Value.Float -> Value.Float(v1.value - v2.value)
                     else -> throw EvalException("$v2 is not an int nor a float")
                 }
+
                 is Value.Float -> when (val v2 = e2.eval(environment)) {
                     is Value.Int -> Value.Float(v1.value - v2.value)
                     is Value.Float -> Value.Float(v1.value - v2.value)
                     else -> throw EvalException("$v2 is not an int nor a float")
                 }
+
                 else -> throw EvalException("$v1 is not an int nor a float")
             }
         }
@@ -80,7 +81,7 @@ internal val ARITHMETIC_OPERATORS = createEvaluations {
                 is Value.Float -> Value.Float(v1.value * v2.value)
                 else -> throw EvalException("$v2 is not an int nor a float")
             }
-            else -> throw EvalException("$v1 is not an int nor a float")
+            else -> throw EvalException("$v1 is not an int nor a float (${v1::class})")
         }
     }
 

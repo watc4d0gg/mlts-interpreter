@@ -1,11 +1,11 @@
 package internals
 
-import java.util.LinkedList
+import java.util.*
 
 /**
  * A class defining the union of two maps
  */
-internal data class Union<K, V>(private val m1: Map<K, V>, private val m2: Map<K, V>): Map<K, V> {
+internal data class Union<K, V>(private val m1: Map<K, V>, private val m2: Map<K, V>) : Map<K, V> {
 
     override val size: Int get() = m1.keys.asSequence().filter { it !in m2 }.count() + m2.keys.size
 
@@ -17,7 +17,7 @@ internal data class Union<K, V>(private val m1: Map<K, V>, private val m2: Map<K
 
     override fun get(key: K): V? = m2[key] ?: m1[key]
 
-    override val keys: Set<K> = object: Set<K> {
+    override val keys: Set<K> = object : Set<K> {
         override val size: Int get() = this@Union.size
 
         override fun isEmpty(): Boolean = this@Union.isEmpty()
@@ -40,7 +40,7 @@ internal data class Union<K, V>(private val m1: Map<K, V>, private val m2: Map<K
 
     override val values: Collection<V> get() = valueSequence.toCollection(LinkedList())
 
-    override val entries: Set<Map.Entry<K, V>> = object: Set<Map.Entry<K, V>> {
+    override val entries: Set<Map.Entry<K, V>> = object : Set<Map.Entry<K, V>> {
 
         override val size: Int get() = this@Union.size
 

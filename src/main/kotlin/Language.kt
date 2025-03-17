@@ -1,7 +1,10 @@
-import internals.*
+import internals.Tokenizer
+import internals.debug
+import internals.eval
+import internals.parse
 import java.io.BufferedReader
 import java.io.File
-import java.util.LinkedList
+import java.util.*
 
 /**
  * A class describing the type of data to read the program from
@@ -120,7 +123,7 @@ sealed interface Value {
 }
 
 data class Thunk(val expression: Expr, val environment: Environment) {
-    override fun toString(): String = expression.prettyString
+    override fun toString(): String = "${expression.prettyString} $environment"
 }
 
 // TODO: type checking
@@ -158,18 +161,19 @@ fun Environment.extend(bindings: List<Binding>, outer: Environment): Environment
     return result
 }
 
-val Environment.prettyString: String get() = map { (name, thunk) ->
-    val beginning = "$name -> "
-    val indent = " ".repeat(beginning.length + 1)
-    val end = thunk.toString().split("\n").mapIndexed { index, line ->
-        if (index != 0) {
-            "$indent$line"
-        } else {
-            line
-        }
-    }.joinToString("\n")
-    "$beginning$end"
-}.joinToString(",\n ", prefix = "[", postfix = "]")
+val Environment.prettyString: String
+    get() = map { (name, thunk) ->
+        val beginning = "$name -> "
+        val indent = " ".repeat(beginning.length + 1)
+        val end = thunk.toString().split("\n").mapIndexed { index, line ->
+            if (index != 0) {
+                "$indent$line"
+            } else {
+                line
+            }
+        }.joinToString("\n")
+        "$beginning$end"
+    }.joinToString(",\n ", prefix = "[", postfix = "]")
 
 fun Program.eval(environment: Environment = mutableMapOf()): Sequence<Value> = asSequence().eval(environment)
 
