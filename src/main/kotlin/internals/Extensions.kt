@@ -1,6 +1,17 @@
 package internals
 
-import java.util.*
+
+/**
+ * Continuations
+ */
+typealias Continuation<T, R> = (value: T) -> R
+
+sealed interface Either<L, R> {
+
+    data class Left<L, R>(val value: L) : Either<L, R>
+
+    data class Right<L, R>(val value: R) : Either<L, R>
+}
 
 /**
  * A class defining the union of two maps
@@ -38,7 +49,7 @@ internal data class Union<K, V>(private val m1: Map<K, V>, private val m2: Map<K
         override fun contains(element: K): Boolean = element in this@Union
     }
 
-    override val values: Collection<V> get() = valueSequence.toCollection(LinkedList())
+    override val values: Collection<V> get() = valueSequence.toCollection(mutableListOf())
 
     override val entries: Set<Map.Entry<K, V>> = object : Set<Map.Entry<K, V>> {
 
@@ -73,15 +84,33 @@ internal data class Union<K, V>(private val m1: Map<K, V>, private val m2: Map<K
     }.distinct()
 }
 
-internal operator fun <K, V> Map<K, V>.plus(other: Map<K, V>): Map<K, V> = Union(this, other)
+operator fun <K, V> Map<K, V>.plus(other: Map<K, V>): Map<K, V> = Union(this, other)
+
+/**
+ * Monadic bind for Result class
+ */
+class ResultScope {
+    fun <T> Result<T>.bind(): T = getOrThrow()
+}
+
+inline fun <T> result(crossinline block: ResultScope.() -> T): Result<T> = runCatching { ResultScope().block() }
+
+infix fun <T> Result<T>.or(other: Result<T>): Result<T> = when {
+    isSuccess -> this
+    else -> other
+}
 
 /**
  * Other extensions
  */
-internal operator fun <E> MutableList<E>.plus(elem: E?): MutableList<E> = apply { elem?.let { addLast(it) } }
+val <T> List<T>.headTail: Pair<T, List<T>> get() = first() to subList(1, size)
 
-internal val <T> List<T>.headTail: Pair<T, List<T>> get() = first() to subList(1, size)
-
-internal inline fun <K, V, R> List<Pair<K, V>>.asMap(transform: (Pair<K, V>) -> R): Map<K, R> {
-    return associateByTo(LinkedHashMap(size), { it.first }, { transform(it) })
+inline fun <T : Any> recursive(crossinline init: T.() -> T): T {
+    lateinit var result: T
+    result = result.init()
+    return result
 }
+
+fun String.indentWith(indent: Int, value: String = " ", firstLine: Boolean = false): String = split("\n")
+    .mapIndexed { index, line -> if (index == 0 && !firstLine) line else "${value.repeat(indent)}$line" }
+    .joinToString("\n")

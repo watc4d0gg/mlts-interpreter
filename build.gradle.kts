@@ -1,10 +1,8 @@
-plugins {
-    java
-    application
-    kotlin("jvm") version "2.1.10"
-}
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-application.mainClass = "MainKt"
+plugins {
+    kotlin("jvm") version "2.1.20"
+}
 
 repositories {
     mavenCentral()
@@ -13,6 +11,7 @@ repositories {
 dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:+")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }
 
 sourceSets.main {
@@ -24,7 +23,14 @@ java {
     targetCompatibility = JavaVersion.VERSION_23
 }
 
+kotlin {
+    jvmToolchain(23)
+    compilerOptions {
+        freeCompilerArgs.add("-Xcontext-parameters")
+        freeCompilerArgs.add("-Xwhen-guards")
+    }
+}
+
 tasks.named<Test>("test") {
     useJUnitPlatform()
 }
-

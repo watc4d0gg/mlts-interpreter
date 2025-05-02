@@ -1,75 +1,185 @@
 package internals
 
-import Expr
-import Program
-import Token
-import java.util.*
+import language.Binding
+import language.Expr
+import language.SExpr
+import language.Value
+import language.parser.Parser
+import language.parser.parse
+import language.parser.pretty
 
-private val INTEGER_REGEX = Regex("-?[0-9]+")
-private val FLOAT_REGEX = Regex("-?[0-9]+[.|,][0-9]+([e|E]-?[0-9]+)?")
-private val STRING_REGEX = Regex("\"[^\"\\\\]*(\\\\.[^\"\\\\]*)*\"")
-private val SYMBOL_REGEX = Regex("[^\\s|()\\[\\]]+")
+internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continuation ->
+    result {
+        when (expression) {
+            is SExpr.LInt -> continuation(Value.Literal.Int(expression.value))
+            is SExpr.LFloat -> continuation(Value.Literal.Float(expression.value))
+            is SExpr.LBool -> continuation(Value.Literal.Bool(expression.value))
+            is SExpr.LStr -> continuation(Value.Literal.Str(expression.value))
+            is SExpr.LSym -> continuation(Expr.Id(expression.symbol))
+            is SExpr.SList -> {
+                val expressions = expression.expressions
+                if (expressions.isEmpty()) {
+                    throw ParseException("Cannot evaluate an empty s-expression")
+                }
+                val (expression, arguments) = expressions.headTail
+                when (expression) {
+                    is SExpr.LSym -> {
+                        when (expression.symbol) {
+                            "define" -> {
+                                if (arguments.size != 2 && arguments.size != 3) {
+                                    throw ParseException("\'define\' requires exactly two or three arguments")
+                                }
+                                if (arguments.size == 2) {
+                                    val (name, body) = arguments
+                                    if (name !is SExpr.LSym) {
+                                        throw ParseException("\'${name.pretty().bind()}\' is an invalid name symbol")
+                                    }
+                                    body.parse {
+                                        continuation(Expr.Define(name.symbol, it))
+                                    }.bind()
+                                } else {
+                                    val (name, parameters, body) = arguments
+                                    if (name !is SExpr.LSym) {
+                                        throw ParseException("\'${name.pretty().bind()}\' is an invalid name symbol")
+                                    }
+                                    if (parameters !is SExpr.SList) {
+                                        throw ParseException(
+                                            "\'${
+                                                name.pretty().bind()
+                                            }\' parameters need to defined as an s-expression"
+                                        )
+                                    }
+                                    val names = parameters.expressions.map {
+                                        if (it !is SExpr.LSym) {
+                                            throw ParseException(
+                                                "\'${
+                                                    it.pretty().bind()
+                                                }\' is an invalid parameter name"
+                                            )
+                                        }
+                                        it.symbol
+                                    }
+                                    body.parse { body ->
+                                        continuation(Expr.Define(name.symbol, Expr.Lambda(names, body)))
+                                    }.bind()
+                                }
+                            }
 
-private val BRACKET_MAP = mapOf("(" to ")", "[" to "]", "{" to "}")
+                            "lambda" -> {
+                                if (arguments.size != 2) {
+                                    throw ParseException("\'lambda\' requires exactly two arguments")
+                                }
+                                val (parameters, body) = arguments
+                                if (parameters !is SExpr.SList) {
+                                    throw ParseException("\'lambda\' parameters need to defined as an s-expression")
+                                }
+                                val names = parameters.expressions.map {
+                                    if (it !is SExpr.LSym) {
+                                        throw ParseException("\'${it.pretty().bind()}\' is not a valid parameter name")
+                                    }
+                                    it.symbol
+                                }
+                                body.parse { body ->
+                                    continuation(Expr.Lambda(names, body))
+                                }.bind()
+                            }
 
-internal tailrec fun Tokenizer.parse(accumulator: MutableList<Expr>): Program {
-    if (!hasNext()) {
-        return accumulator
-    }
-    val token = next()
-    val expr: Expr? = when (val value = token.value) {
-        "(", "[", "{" -> parseSExpr(bracket = value)
-        ")", "]", "}" -> throw SyntaxException("Unexpected closing bracket", this, token)
-        else -> if (value.startsWith(";")) null else parseLiteral(token)
-    }
-    return parse(accumulator + expr)
-}
+                            "let" -> {
+                                if (arguments.size != 2 && arguments.size != 3) {
+                                    throw ParseException("\'let\' requires exactly two or three arguments")
+                                }
+                                if (arguments.size == 2) {
+                                    val (variables, body) = arguments
+                                    if (variables !is SExpr.SList) {
+                                        throw ParseException("\'let\' variables need to defined as an s-expression")
+                                    }
+                                    variables.expressions.parse({ parseBinding(it) }) { bindings ->
+                                        body.parse { body ->
+                                            continuation(Expr.Let(bindings, body))
+                                        }.bind()
+                                    }.bind()
 
-private fun Token.parseInt(): Expr? = INTEGER_REGEX.matchEntire(value)
-    ?.let { Expr.LInt(it.value.toInt()) }
+                                } else {
+                                    val (name, parameters, body) = arguments
+                                    if (name !is SExpr.LSym) {
+                                        throw ParseException("\'${name.pretty().bind()}\' is an invalid name symbol")
+                                    }
+                                    if (parameters !is SExpr.SList) {
+                                        throw ParseException("\'let\' parameters need to defined as an s-expression")
+                                    }
+                                    parameters.expressions.parse({ parseBinding(it) }) { bindings ->
+                                        val bindings = bindings.toMutableList()
+                                        body.parse { body ->
+                                            val lambda = Expr.Lambda(bindings.map { it.name }, body)
+                                            bindings += Binding(name.symbol, lambda)
+                                            if (bindings.distinctBy { it.name }.size != bindings.size) {
+                                                throw ParseException(
+                                                    "\'let\' bindings require to be distinct (${
+                                                        bindings.joinToString(" ") { it.name }
+                                                    }")
+                                            }
+                                            continuation(Expr.Let(bindings, lambda.body))
+                                        }.bind()
+                                    }.bind()
+                                }
+                            }
 
-private fun Token.parseFloat(): Expr? = FLOAT_REGEX.matchEntire(value)
-    ?.let { Expr.LFloat(it.value.toDouble()) }
+                            "letrec" -> {
+                                if (arguments.size != 2) {
+                                    throw ParseException("\'letrec\' requires exactly two arguments")
+                                }
+                                val (variables, body) = arguments
+                                if (variables !is SExpr.SList) {
+                                    throw ParseException("\'letrec\' variables need to defined as an s-expression")
+                                }
+                                variables.expressions.parse({ parseBinding(it) }) { bindings ->
+                                    if (bindings.distinctBy { it.name }.size != bindings.size) {
+                                        throw ParseException(
+                                            "\'letrec\' bindings require to be distinct (${
+                                                bindings.joinToString(" ") { it.name }
+                                            }")
+                                    }
+                                    body.parse { body ->
+                                        continuation(Expr.LetRec(bindings, body))
+                                    }.bind()
+                                }.bind()
+                            }
 
-private fun Token.parseBool(): Expr? = when (value) {
-    "true" -> Expr.LBool(true)
-    "false" -> Expr.LBool(false)
-    else -> null
-}
+                            else -> arguments.parse {
+                                continuation(Expr.Apply(Expr.Id(expression.symbol), it))
+                            }.bind()
+                        }
+                    }
 
-private fun Token.parseStr(): Expr? = STRING_REGEX.matchEntire(value)
-    ?.let { Expr.LStr(it.value.substring(1, it.value.length - 1)) }
+                    is SExpr.SList -> expression.parse { function ->
+                        arguments.parse { arguments ->
+                            continuation(Expr.Apply(function, arguments))
+                        }.bind()
+                    }.bind()
 
-private fun Token.parseSym(): Expr? = SYMBOL_REGEX.matchEntire(value)
-    ?.let { Expr.LSym(it.value) }
-
-private fun Tokenizer.parseLiteral(token: Token): Expr =
-    token.parseInt()
-    ?: token.parseFloat()
-    ?: token.parseBool()
-    ?: token.parseStr()
-    ?: token.parseSym()
-    ?: throw SyntaxException("Unparsable literal", this, token)
-
-private fun Tokenizer.parseSExpr(bracket: String = "("): Expr {
-    val expressions = LinkedList<Expr>()
-    while (hasNext()) {
-        val token = next()
-        expressions += when (token.value) {
-            "(", "[", "{" -> parseSExpr(bracket = token.value)
-            in BRACKET_MAP.values - BRACKET_MAP[bracket] -> throw SyntaxException("Unexpected closing bracket", this, token)
-            BRACKET_MAP[bracket] -> {
-                return Expr.SExpr(expressions)
+                    else -> throw ParseException("\'${expression.pretty().bind()}\' does not parse to a valid expression"
+                    )
+                }
             }
-            else -> parseLiteral(token)
         }
     }
-    throw SyntaxException("Missing closing bracket", this, peekPrevious(), offset = 1)
 }
 
-internal class SyntaxException(message: String, tokenizer: Tokenizer, token: Token, offset: Int = 0):
-    Exception("""
-        ${tokenizer.data.identifier.let { "$it:${token.line}:${token.column + offset}" }}: Syntax Error: $message:
-        ${token.line} | ${tokenizer.currentLine}
-        ${" ".repeat(token.line.toString().length + 3 + token.column + offset)}^
-        """.trimIndent())
+context(parser: Parser<Expr, T>)
+private fun <T> SExpr.parseBinding(continuation: Continuation<Binding, T>): Result<T> = result {
+    if (this@parseBinding !is SExpr.SList) {
+        throw ParseException("\'${pretty().bind()}\' is an invalid binding expression")
+    }
+    if (expressions.size != 2) {
+        throw ParseException("Bindings require exactly two arguments")
+    }
+    val (name, value) = expressions
+    if (name !is SExpr.LSym) {
+        throw ParseException("\'${name.pretty().bind()}\' is an invalid name symbol")
+    }
+    value.parse {
+        continuation(Binding(name.symbol, it))
+    }.bind()
+}
+
+internal class ParseException(message: String) : Exception("ParseError: $message")
