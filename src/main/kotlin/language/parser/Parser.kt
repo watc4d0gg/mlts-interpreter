@@ -53,8 +53,14 @@ operator fun <T, R> Parser<T, R>.plus(other: Parser<T, R>): Parser<T, R> = Parse
     parse(expression, continuation) or other.parse(expression, continuation)
 }
 
+/**
+ * AST parsing
+ */
 typealias ASTParser<T> = Parser<Expr, T>
 
+/**
+ * Pretty printing
+ */
 typealias PrettyPrinter<T> = Parser<String, T>
 
 fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, continuation ->
@@ -68,12 +74,12 @@ fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, continua
             is SExpr.SList -> {
                 val expressions = expression.expressions
                 if (expressions.size > 3) {
-                    expressions[0].parse { e0 ->
-                        val firstExpression = e0.indentWith(1)
-                        val indent = firstExpression.split("\n").last().length + 2
-                        expressions[1].parse { e1 ->
-                            val secondExpression = e1.indentWith(indent)
-                            val firstLine = "$firstExpression $secondExpression"
+                    expressions[0].parse { first ->
+                        val first = first.indentWith(1)
+                        val indent = first.split("\n").last().length + 2
+                        expressions[1].parse { second ->
+                            val second = second.indentWith(indent)
+                            val firstLine = "$first $second"
                             expressions.subList(2, expressions.size).parse { rest ->
                                 val nextLines = rest.joinToString("\n") {
                                     it.indentWith(indent, firstLine = true)

@@ -51,6 +51,10 @@ operator fun <T, R> Interpreter<T, R>.plus(other: Interpreter<T, R>): Interprete
         )
     }
 
+
+/**
+ * Big-step operational semantics
+ */
 typealias BigStepInterpreter<T> = Interpreter<Value, T>
 
 context(interpreter: BigStepInterpreter<T>)
@@ -65,6 +69,10 @@ fun <T> Value.strict(continuation: Continuation<Value, T>): Result<T> = result {
     }
 }
 
+
+/**
+ * Small-step operational semantics
+ */
 typealias SmallStepInterpreter<T> = Interpreter<Expr, T>
 
 context(interpreter: SmallStepInterpreter<T>)
@@ -76,6 +84,7 @@ fun <T> Value.strict(continuation: Continuation<Expr, T>): Result<T> = result {
                 // thunks in thunks?
                 is Value -> it.strict(continuation).bind()
                 else -> {
+                    // update the thunk with a partially evaluated expression
                     this@strict.expression = it
                     continuation(it)
                 }
@@ -86,18 +95,24 @@ fun <T> Value.strict(continuation: Continuation<Expr, T>): Result<T> = result {
     }
 }
 
-fun <T> SmallStepInterpreter<T>.toBigStep(): BigStepInterpreter<T> =
+inline fun <T> SmallStepInterpreter<T>.toBigStep(crossinline onStep: (Expr) -> Unit = {}): BigStepInterpreter<T> =
     BigStepInterpreter { expression, environment, continuation ->
+        onStep(expression)
         interpret(expression, environment, recursive {
             {
+                onStep(it)
                 when (it) {
                     is Value -> continuation(it)
-                    else -> interpret(expression, environment, this).getOrThrow()
+                    else -> interpret(it, environment, this).getOrThrow()
                 }
             }
         })
     }
 
+
+/**
+ * Pretty printing
+ */
 typealias PrettyPrinter<T> = Interpreter<String, T>
 
 fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, environment, continuation ->
@@ -121,22 +136,23 @@ fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, environm
             is Expr.Define -> {
                 val start = "(define "
                 val indent = start.length
+                val name = expression.name
                 val definition = expression.expression
 
                 when (definition) {
                     is Expr.Lambda -> {
                         environment.unbind(definition.parameters) { lambdaEnvironment ->
-                            definition.body.interpret(lambdaEnvironment) {
+                            definition.body.interpret(lambdaEnvironment) { body ->
                                 val parameters = "(${definition.parameters.joinToString(" ")})"
                                     .indentWith(indent, firstLine = true)
-                                val body = it.indentWith(indent, firstLine = true)
-                                continuation("$start${expression.name}\n$parameters\n$body)")
+                                val body = body.indentWith(indent, firstLine = true)
+                                continuation("$start$name\n$parameters\n$body)")
                             }.bind()
                         }.bind()
                     }
 
-                    else -> expression.interpret(environment) {
-                        continuation("$start${expression.name} ${it.indentWith(indent)})")
+                    else -> definition.interpret(environment) { definition ->
+                        continuation("$start$name ${definition.indentWith(indent)})")
                     }.bind()
                 }
             }
@@ -145,9 +161,9 @@ fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, environm
                 val start = "(lambda "
                 val indent = start.length
                 environment.unbind(expression.parameters) { lambdaEnvironment ->
-                    expression.body.interpret(lambdaEnvironment) {
+                    expression.body.interpret(lambdaEnvironment) { body ->
                         val parameters = "(${expression.parameters.joinToString(" ")})"
-                        val body = it.indentWith(indent, firstLine = true)
+                        val body = body.indentWith(indent, firstLine = true)
                         continuation("$start$parameters\n$body)")
                     }.bind()
                 }.bind()
@@ -159,10 +175,10 @@ fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, environm
                 if (expression.arguments.size > 2) {
                     val indent = start.split("\n").last().length + 1
                     val (head, tail) = expression.arguments.headTail
-                    head.interpret(environment) { value ->
-                        tail.interpret(environment) { values ->
-                            val first = value.indentWith(indent)
-                            val rest = values.joinToString("\n") { value ->
+                    head.interpret(environment) { first ->
+                        tail.interpret(environment) { rest ->
+                            val first = first.indentWith(indent)
+                            val rest = rest.joinToString("\n") { value ->
                                 value.indentWith(indent, firstLine = true)
                             }
                             continuation("$start $first\n$rest)")
@@ -185,8 +201,11 @@ fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, environm
                 }
             }.bind()
 
-            is Expr.Let -> (expression.bindings to expression.body).pretty("(let ", environment, continuation).bind()
-            is Expr.LetRec -> (expression.bindings to expression.body).pretty("(letrec ", environment, continuation)
+            is Expr.Let -> expression.asPair()
+                .pretty("(let ", environment, continuation)
+                .bind()
+            is Expr.LetRec -> expression.asPair()
+                .pretty("(letrec ", environment, continuation)
                 .bind()
 
             is Value -> continuation(toString())
@@ -207,13 +226,13 @@ private fun <T> Pair<List<Binding>, Expr>.pretty(
     val indent = start.length
     val (bindings, body) = this@pretty
     val (names, expressions) = bindings.map(Binding::asPair).unzip()
-    expressions.interpret(environment) {
-        val values = it.mapIndexed { index, value -> value.indentWith(names[index].length + 2) }
-        body.interpret(environment) { value ->
+    expressions.interpret(environment) { values ->
+        val values = values.mapIndexed { index, value -> value.indentWith(names[index].length + 2) }
+        body.interpret(environment) { body ->
             val bindings = values.mapIndexed { index, binding ->
                 "(${names[index]} $binding)".indentWith(indent + 1, firstLine = index != 0)
             }.joinToString("\n")
-            val body = value.indentWith(indent, firstLine = true)
+            val body = body.indentWith(indent, firstLine = true)
             continuation("$start($bindings)\n$body)")
         }.bind()
     }.bind()

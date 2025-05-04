@@ -10,6 +10,8 @@ import language.Value
  */
 sealed interface EvaluationStrategy {
 
+    fun <T> onLookup(value: Value, continuation: Continuation<Value, T>): Result<T> = result { continuation(value) }
+
     context(interpreter: Interpreter<T, R>)
     fun <T : Expr, R> bindAs(expression: Expr, environment: Environment, continuation: Continuation<T, R>): Result<R>
 
@@ -40,6 +42,13 @@ sealed interface EvaluationStrategy {
     }
 
     data object Lazy : EvaluationStrategy {
+
+        override fun <T> onLookup(value: Value, continuation: Continuation<Value, T>): Result<T> = result {
+            when (value) {
+                is Value.Thunk -> continuation(value.result ?: value)
+                else -> continuation(value)
+            }
+        }
 
         context(_: Interpreter<T, R>)
         override fun <T : Expr, R> bindAs(

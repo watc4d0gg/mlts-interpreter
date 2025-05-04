@@ -79,9 +79,7 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
                                     }
                                     it.symbol
                                 }
-                                body.parse { body ->
-                                    continuation(Expr.Lambda(names, body))
-                                }.bind()
+                                body.parse { body -> continuation(Expr.Lambda(names, body)) }.bind()
                             }
 
                             "let" -> {
@@ -94,9 +92,7 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
                                         throw ParseException("\'let\' variables need to defined as an s-expression")
                                     }
                                     variables.expressions.parse({ parseBinding(it) }) { bindings ->
-                                        body.parse { body ->
-                                            continuation(Expr.Let(bindings, body))
-                                        }.bind()
+                                        body.parse { body -> continuation(Expr.Let(bindings, body)) }.bind()
                                     }.bind()
 
                                 } else {
@@ -177,9 +173,7 @@ private fun <T> SExpr.parseBinding(continuation: Continuation<Binding, T>): Resu
     if (name !is SExpr.LSym) {
         throw ParseException("\'${name.pretty().bind()}\' is an invalid name symbol")
     }
-    value.parse {
-        continuation(Binding(name.symbol, it))
-    }.bind()
+    value.parse { continuation(Binding(name.symbol, it)) }.bind()
 }
 
 internal class ParseException(message: String) : Exception("ParseError: $message")

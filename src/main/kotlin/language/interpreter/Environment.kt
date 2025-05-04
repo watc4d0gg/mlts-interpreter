@@ -14,7 +14,7 @@ data class Environment(
     operator fun contains(name: String): Boolean = name in values
 
     fun <R> lookup(name: String, continuation: Continuation<Value, R>): Result<R> = result {
-        continuation(values.getValue(name))
+        evaluationStrategy.onLookup(values.getValue(name), continuation).bind()
     }
 
     context(interpreter: BigStepInterpreter<T>)

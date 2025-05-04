@@ -45,12 +45,7 @@ data class Tokenizer(val data: InputData): Iterator<Token> {
 
     fun hasPrevious(): Boolean = prevToken != null
 
-    fun peekPrevious(): Token {
-        if (!hasPrevious()) {
-            throw NoSuchElementException()
-        }
-        return prevToken!!
-    }
+    fun peekPrevious(): Token = prevToken ?: throw NoSuchElementException()
 
     private fun generateTokens(): Sequence<Token> = sequence {
         if (currentLine.isNotEmpty()) {
