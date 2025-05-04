@@ -1,69 +1,23 @@
 package language.parser
 
-import internals.Continuation
 import internals.indentWith
-import internals.or
 import internals.result
-import language.Expr
-import language.SExpr
+import language.*
 
 /**
  * Parsers
  */
-fun interface Parser<T, R> {
+typealias Parser<T> = TransformationWithoutState<SExpr, Expr, T>
 
-    context(parser: Parser<T, R>)
-    fun parse(expression: SExpr, continuation: Continuation<T, R>): Result<R>
-}
-
-context(parser: Parser<T, R>)
-fun <T, R> SExpr.parse(continuation: Continuation<T, R>): Result<R> = parser.parse(this, continuation)
-
-context(parser: Parser<T, R>)
-fun <T, V, R> List<SExpr>.parse(
-    parse: context(Parser<T, R>) SExpr.(Continuation<V, R>) -> Result<R>,
-    continuation: Continuation<List<V>, R>
-): Result<R> = result {
-    if (isEmpty()) {
-        continuation(emptyList())
-    } else {
-        fun nextContinuation(index: Int = 0, values: MutableList<V> = mutableListOf()): Continuation<V, R> =
-            when (index) {
-                size - 1 -> { value ->
-                    values.add(value)
-                    continuation(values)
-                }
-
-                else -> { value ->
-                    values.add(value)
-                    val nextContinuation = nextContinuation(index + 1, values)
-                    this@parse[index + 1].parse(nextContinuation).bind()
-                }
-            }
-
-        first().parse(nextContinuation()).bind()
-    }
-}
-
-context(parser: Parser<T, R>)
-fun <T, R> List<SExpr>.parse(continuation: Continuation<List<T>, R>): Result<R> =
-    parse({ parse(it) }, continuation)
-
-operator fun <T, R> Parser<T, R>.plus(other: Parser<T, R>): Parser<T, R> = Parser { expression, continuation ->
-    parse(expression, continuation) or other.parse(expression, continuation)
-}
-
-/**
- * AST parsing
- */
-typealias ASTParser<T> = Parser<Expr, T>
+class ParseException(message: String, cause: Throwable? = null) :
+    TransformationException("ParseError: $message", cause)
 
 /**
  * Pretty printing
  */
-typealias PrettyPrinter<T> = Parser<String, T>
+typealias PrettyPrinter<T> = TransformationWithoutState<SExpr, String, T>
 
-fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, continuation ->
+fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, _, continuation ->
     result {
         when (expression) {
             is SExpr.LInt -> continuation(expression.value.toString())
@@ -74,13 +28,13 @@ fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, continua
             is SExpr.SList -> {
                 val expressions = expression.expressions
                 if (expressions.size > 3) {
-                    expressions[0].parse { first ->
+                    expressions[0].transform { first ->
                         val first = first.indentWith(1)
                         val indent = first.split("\n").last().length + 2
-                        expressions[1].parse { second ->
+                        expressions[1].transform { second ->
                             val second = second.indentWith(indent)
                             val firstLine = "$first $second"
-                            expressions.subList(2, expressions.size).parse { rest ->
+                            expressions.subList(2, expressions.size).transform { rest ->
                                 val nextLines = rest.joinToString("\n") {
                                     it.indentWith(indent, firstLine = true)
                                 }
@@ -90,7 +44,7 @@ fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, continua
                     }.bind()
 
                 } else {
-                    expressions.parse { it ->
+                    expressions.transform { it ->
                         var indent = 0
                         val values = it.joinToString(" ") { value ->
                             value.indentWith(indent).also {
@@ -105,4 +59,4 @@ fun <T> prettyPrinter(): PrettyPrinter<T> = PrettyPrinter { expression, continua
     }
 }
 
-fun SExpr.pretty(): Result<String> = with(prettyPrinter<String>()) { parse { it } }
+fun SExpr.pretty(): Result<String> = with(prettyPrinter<String>()) { transform { it } }

@@ -3,7 +3,7 @@ package language
 /**
  * A class containing all the parseable expressions
  */
-sealed interface SExpr {
+sealed interface SExpr : Syntax {
 
     data class LInt(val value: Int) : SExpr {
 

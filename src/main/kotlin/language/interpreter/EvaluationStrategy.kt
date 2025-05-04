@@ -1,9 +1,11 @@
 package language.interpreter
 
-import internals.Continuation
 import internals.result
+import language.Continuation
 import language.Expr
+import language.Transformation
 import language.Value
+import language.transform
 
 /**
  * Evaluation strategies
@@ -12,32 +14,32 @@ sealed interface EvaluationStrategy {
 
     fun <T> onLookup(value: Value, continuation: Continuation<Value, T>): Result<T> = result { continuation(value) }
 
-    context(interpreter: Interpreter<T, R>)
-    fun <T : Expr, R> bindAs(expression: Expr, environment: Environment, continuation: Continuation<T, R>): Result<R>
+    context(interpreter: T)
+    fun <V : Expr, R, T : Transformation<Expr, V, Environment, R>> bindAs(expression: Expr, environment: Environment, continuation: Continuation<V, R>): Result<R>
 
     data object CallByValue : EvaluationStrategy {
 
-        context(interpreter: Interpreter<T, R>)
-        override fun <T : Expr, R> bindAs(
+        context(interpreter: T)
+        override fun <V : Expr, R, T : Transformation<Expr, V, Environment, R>> bindAs(
             expression: Expr,
             environment: Environment,
-            continuation: Continuation<T, R>
+            continuation: Continuation<V, R>
         ): Result<R> = result {
-            expression.interpret(environment, continuation).bind()
+            expression.transform(environment, continuation).bind()
         }
     }
 
     data object CallByName : EvaluationStrategy {
 
-        context(_: Interpreter<T, R>)
-        override fun <T : Expr, R> bindAs(
+        context(_: T)
+        override fun <V : Expr, R, T : Transformation<Expr, V, Environment, R>> bindAs(
             expression: Expr,
             environment: Environment,
-            continuation: Continuation<T, R>
+            continuation: Continuation<V, R>
         ): Result<R> = result {
             // Value is the only subtype of Expr (both are sealed)
             @Suppress("UNCHECKED_CAST")
-            continuation(Value.Thunk(expression, environment) as T)
+            continuation(Value.Thunk(expression, environment) as V)
         }
     }
 
@@ -50,92 +52,56 @@ sealed interface EvaluationStrategy {
             }
         }
 
-        context(_: Interpreter<T, R>)
-        override fun <T : Expr, R> bindAs(
+        context(_: T)
+        override fun <V : Expr, R, T : Transformation<Expr, V, Environment, R>> bindAs(
             expression: Expr,
             environment: Environment,
-            continuation: Continuation<T, R>
+            continuation: Continuation<V, R>
         ): Result<R> = result {
             // Value is the only subtype of Expr (both are sealed)
             @Suppress("UNCHECKED_CAST")
-            continuation(Value.Thunk(expression, environment) as T)
+            continuation(Value.Thunk(expression, environment) as V)
         }
     }
 }
 
-
-context(interpreter: Interpreter<T, R>)
-fun <T : Expr, R> EvaluationStrategy.bindAllAs(
+context(interpreter: T)
+fun <V : Expr, R, T : Transformation<Expr, V, Environment, R>> EvaluationStrategy.bindAllAs(
     expressions: List<Expr>,
     environment: Environment,
-    nextEnvironment: Environment.(Int, T) -> Environment = { _, _ -> this },
-    continuation: Continuation<List<T>, R>
-): Result<R> = result {
-    if (expressions.isEmpty()) {
-        continuation(emptyList())
-    } else {
-        var currentEnvironment = environment
+    nextEnvironment: context(T) Environment.(
+        index: Int,
+        expression: Expr,
+        value: V
+    ) -> Result<Environment> = { _, _, _ -> result { environment } },
+    continuation: Continuation<List<V>, R>
+): Result<R> = expressions.transform(
+    state = environment,
+    nextState = nextEnvironment,
+    transform = { environment, continuation -> bindAs(this, environment, continuation) },
+    continuation = continuation
+)
 
-        fun nextContinuation(index: Int = 1, values: MutableList<T> = mutableListOf()): Continuation<T, R> =
-            when (index) {
-                expressions.size - 1 -> { value ->
-                    values.add(value)
-                    currentEnvironment = currentEnvironment.nextEnvironment(index, value)
-                    continuation(values)
-                }
-
-                else -> { value ->
-                    values.add(value)
-                    currentEnvironment = currentEnvironment.nextEnvironment(index, value)
-                    // no hope of inlining...
-                    val nextContinuation = nextContinuation(index + 1, values)
-                    bindAs(expressions[index + 1], currentEnvironment, nextContinuation).bind()
-                }
-            }
-
-        bindAs(expressions.first(), currentEnvironment, nextContinuation()).bind()
-    }
-}
-
-context(interpreter: SmallStepInterpreter<T>)
-@JvmName("bindAllAsSmallStep")
-fun <T> EvaluationStrategy.bindAllAs(
+context(interpreter: T)
+@JvmName("bindAllAsStep")
+fun <R, T : StepInterpreter<R>> EvaluationStrategy.bindAllAs(
     expressions: List<Expr>,
     environment: Environment,
-    nextEnvironment: Environment.(Int, Expr) -> Environment = { _, _ -> this },
-    continuation: Continuation<List<Expr>, T>
-): Result<T> = result {
-    if (expressions.isEmpty()) {
-        continuation(emptyList())
-    } else {
-        var currentEnvironment = environment
-
-        fun nextContinuation(index: Int = 1, values: MutableList<Expr> = mutableListOf()): Continuation<Expr, T> =
-            when (index) {
-                expressions.size - 1 -> { value ->
-                    values.add(value)
-                    currentEnvironment = currentEnvironment.nextEnvironment(index, value)
-                    continuation(values)
-                }
-
-                else -> { value ->
-                    values.add(value)
-                    currentEnvironment = currentEnvironment.nextEnvironment(index, value)
-                    when (value) {
-                        is Value -> {
-                            val nextContinuation = nextContinuation(index + 1, values)
-                            // no hope of inlining...
-                            bindAs(expressions[index + 1], currentEnvironment, nextContinuation).bind()
-                        }
-
-                        else -> {
-                            continuation(values + expressions.subList(index + 1, expressions.size))
-                        }
-                    }
-
-                }
-            }
-
-        bindAs(expressions.first(), currentEnvironment, nextContinuation()).bind()
-    }
-}
+    nextEnvironment: context(T) Environment.(
+        index: Int,
+        expression: Expr,
+        value: Expr
+    ) -> Result<Environment> = { _, _, _ -> result { environment } },
+    continuation: Continuation<List<Expr>, R>
+): Result<R> = expressions.transform(
+    state = environment,
+    nextState = nextEnvironment,
+    transform = { environment, continuation -> bindAs(this, environment, continuation) },
+    onValue = { index, value, values, continuation, default ->
+        when (value) {
+            is Value -> default()
+            else -> continuation(values + subList(index + 1, size))
+        }
+    },
+    continuation = continuation
+)

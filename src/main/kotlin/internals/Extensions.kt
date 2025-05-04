@@ -1,11 +1,6 @@
 package internals
 
 
-/**
- * Continuations
- */
-typealias Continuation<T, R> = (value: T) -> R
-
 sealed interface Either<L, R> {
 
     data class Left<L, R>(val value: L) : Either<L, R>
@@ -93,7 +88,20 @@ class ResultScope {
     fun <T> Result<T>.bind(): T = getOrThrow()
 }
 
-inline fun <T> result(crossinline block: ResultScope.() -> T): Result<T> = runCatching { ResultScope().block() }
+inline fun <T, reified E : Throwable> result(
+    crossinline throwable: (message: String, cause: Throwable?) -> E,
+    crossinline block: ResultScope.() -> T
+): Result<T> =
+    try {
+        Result.success(ResultScope().block())
+    } catch (e: Throwable) {
+        when (e) {
+            is E -> Result.failure(e)
+            else -> Result.failure(throwable(e.message ?: "<no message>", e))
+        }
+    }
+
+inline fun <T> result(crossinline block: ResultScope.() -> T): Result<T> = result(::Throwable, block)
 
 infix fun <T> Result<T>.or(other: Result<T>): Result<T> = when {
     isSuccess -> this

@@ -1,15 +1,17 @@
 package internals
 
 import language.Binding
+import language.Continuation
 import language.Expr
 import language.SExpr
 import language.Value
+import language.parser.ParseException
 import language.parser.Parser
-import language.parser.parse
 import language.parser.pretty
+import language.transform
 
-internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continuation ->
-    result {
+internal fun <T> defaultParser(): Parser<T> = Parser { expression, _, continuation ->
+    result(::ParseException) {
         when (expression) {
             is SExpr.LInt -> continuation(Value.Literal.Int(expression.value))
             is SExpr.LFloat -> continuation(Value.Literal.Float(expression.value))
@@ -34,8 +36,8 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
                                     if (name !is SExpr.LSym) {
                                         throw ParseException("\'${name.pretty().bind()}\' is an invalid name symbol")
                                     }
-                                    body.parse {
-                                        continuation(Expr.Define(name.symbol, it))
+                                    body.transform { body ->
+                                        continuation(Expr.Define(name.symbol, body))
                                     }.bind()
                                 } else {
                                     val (name, parameters, body) = arguments
@@ -59,7 +61,7 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
                                         }
                                         it.symbol
                                     }
-                                    body.parse { body ->
+                                    body.transform { body ->
                                         continuation(Expr.Define(name.symbol, Expr.Lambda(names, body)))
                                     }.bind()
                                 }
@@ -79,7 +81,7 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
                                     }
                                     it.symbol
                                 }
-                                body.parse { body -> continuation(Expr.Lambda(names, body)) }.bind()
+                                body.transform { body -> continuation(Expr.Lambda(names, body)) }.bind()
                             }
 
                             "let" -> {
@@ -91,8 +93,8 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
                                     if (variables !is SExpr.SList) {
                                         throw ParseException("\'let\' variables need to defined as an s-expression")
                                     }
-                                    variables.expressions.parse({ parseBinding(it) }) { bindings ->
-                                        body.parse { body -> continuation(Expr.Let(bindings, body)) }.bind()
+                                    variables.expressions.transform ({ parseBinding(it) }) { bindings ->
+                                        body.transform { body -> continuation(Expr.Let(bindings, body)) }.bind()
                                     }.bind()
 
                                 } else {
@@ -103,9 +105,9 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
                                     if (parameters !is SExpr.SList) {
                                         throw ParseException("\'let\' parameters need to defined as an s-expression")
                                     }
-                                    parameters.expressions.parse({ parseBinding(it) }) { bindings ->
+                                    parameters.expressions.transform ({ parseBinding(it) }) { bindings ->
                                         val bindings = bindings.toMutableList()
-                                        body.parse { body ->
+                                        body.transform { body ->
                                             val lambda = Expr.Lambda(bindings.map { it.name }, body)
                                             bindings += Binding(name.symbol, lambda)
                                             if (bindings.distinctBy { it.name }.size != bindings.size) {
@@ -128,27 +130,27 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
                                 if (variables !is SExpr.SList) {
                                     throw ParseException("\'letrec\' variables need to defined as an s-expression")
                                 }
-                                variables.expressions.parse({ parseBinding(it) }) { bindings ->
+                                variables.expressions.transform({ parseBinding(it) }) { bindings ->
                                     if (bindings.distinctBy { it.name }.size != bindings.size) {
                                         throw ParseException(
                                             "\'letrec\' bindings require to be distinct (${
                                                 bindings.joinToString(" ") { it.name }
                                             }")
                                     }
-                                    body.parse { body ->
+                                    body.transform { body ->
                                         continuation(Expr.LetRec(bindings, body))
                                     }.bind()
                                 }.bind()
                             }
 
-                            else -> arguments.parse {
+                            else -> arguments.transform {
                                 continuation(Expr.Apply(Expr.Id(expression.symbol), it))
                             }.bind()
                         }
                     }
 
-                    is SExpr.SList -> expression.parse { function ->
-                        arguments.parse { arguments ->
+                    is SExpr.SList -> expression.transform { function ->
+                        arguments.transform { arguments ->
                             continuation(Expr.Apply(function, arguments))
                         }.bind()
                     }.bind()
@@ -161,8 +163,8 @@ internal fun <T> defaultParser(): Parser<Expr, T> = Parser { expression, continu
     }
 }
 
-context(parser: Parser<Expr, T>)
-private fun <T> SExpr.parseBinding(continuation: Continuation<Binding, T>): Result<T> = result {
+context(parser: P)
+private fun <T, P : Parser<T>> SExpr.parseBinding(continuation: Continuation<Binding, T>): Result<T> = result {
     if (this@parseBinding !is SExpr.SList) {
         throw ParseException("\'${pretty().bind()}\' is an invalid binding expression")
     }
@@ -173,7 +175,5 @@ private fun <T> SExpr.parseBinding(continuation: Continuation<Binding, T>): Resu
     if (name !is SExpr.LSym) {
         throw ParseException("\'${name.pretty().bind()}\' is an invalid name symbol")
     }
-    value.parse { continuation(Binding(name.symbol, it)) }.bind()
+    value.transform { value -> continuation(Binding(name.symbol, value)) }.bind()
 }
-
-internal class ParseException(message: String) : Exception("ParseError: $message")

@@ -3,7 +3,7 @@ package language
 /**
  * AST
  */
-sealed interface Expr {
+sealed interface Expr : Syntax {
 
     @JvmInline
     value class Id(val name: String) : Expr
@@ -23,7 +23,7 @@ sealed interface Expr {
     }
 }
 
-typealias Program = Sequence<Expr>
+typealias Program = Sequence<Result<Expr>>
 
 data class Binding(val name: String, val expression: Expr) {
     fun asPair(): Pair<String, Expr> = name to expression

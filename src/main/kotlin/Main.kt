@@ -1,8 +1,8 @@
 import internals.SyntaxException
 import language.interpreter.Environment
 import language.interpreter.EvaluationStrategy
-import language.interpreter.interpret
 import language.interpreter.prettyPrinter
+import language.transform
 
 import java.io.File
 import kotlin.system.exitProcess
@@ -25,9 +25,10 @@ fun main(vararg args: String) {
     argMap["-f"]?.let { (filepath) ->
         try {
             with(prettyPrinter<Unit>()) {
-                File(filepath).read().parse().onSuccess {
-                    it.forEach { expression ->
-                        expression.interpret(environment, ::println)
+                File(filepath).read().parse().forEach {
+                    it.onSuccess { expression ->
+                        expression.transform(environment, ::println)
+                            .onFailure { error -> System.err.println(error.stackTraceToString()) }
                     }
                 }
             }

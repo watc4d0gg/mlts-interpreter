@@ -1,10 +1,9 @@
 import internals.Tokenizer
 import internals.defaultParser
 import internals.read
-import internals.result
 import language.Expr
 import language.SExpr
-import language.parser.parse
+import language.transform
 import java.io.BufferedReader
 import java.io.File
 
@@ -28,12 +27,10 @@ fun String.read(): Sequence<SExpr> = Tokenizer(InputData(this)).read()
 
 fun File.read(): Sequence<SExpr> = Tokenizer(InputData(this)).read()
 
-fun Sequence<SExpr>.parse(): Result<Sequence<Expr>> = result {
-    sequence {
-        with(defaultParser<Expr>()) {
-            forEach { expression ->
-                yield(expression.parse { it }.bind())
-            }
+fun Sequence<SExpr>.parse(): Sequence<Result<Expr>> = sequence {
+    with(defaultParser<Expr>()) {
+        forEach { expression ->
+            yield(expression.transform { it })
         }
     }
 }

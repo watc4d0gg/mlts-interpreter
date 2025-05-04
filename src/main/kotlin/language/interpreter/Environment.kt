@@ -1,9 +1,9 @@
 package language.interpreter
 
-import internals.Continuation
 import internals.Either
 import internals.result
 import language.Binding
+import language.Continuation
 import language.Expr
 import language.Value
 
@@ -17,8 +17,7 @@ data class Environment(
         evaluationStrategy.onLookup(values.getValue(name), continuation).bind()
     }
 
-    context(interpreter: BigStepInterpreter<T>)
-    @JvmName("bindBigStep")
+    context(interpreter: Interpreter<T>)
     fun <T> bind(bindings: List<Binding>, continuation: Continuation<Environment, T>): Result<T> = result {
         val (names, expressions) = bindings.map(Binding::asPair).unzip()
         evaluationStrategy.bindAllAs(expressions, this@Environment) {
@@ -27,8 +26,8 @@ data class Environment(
         }.bind()
     }
 
-    context(interpreter: SmallStepInterpreter<T>)
-    @JvmName("bindSmallStep")
+    context(interpreter: StepInterpreter<T>)
+    @JvmName("bindStep")
     fun <T> bind(bindings: List<Binding>, continuation: Continuation<Either<List<Expr>, Environment>, T>): Result<T> =
         result {
             val (names, expressions) = bindings.map(Binding::asPair).unzip()
@@ -44,8 +43,7 @@ data class Environment(
             }.bind()
         }
 
-    context(interpreter: BigStepInterpreter<T>)
-    @JvmName("bindLocalBigStep")
+    context(interpreter: Interpreter<T>)
     fun <T> bindLocal(
         bindings: List<Binding>,
         isRecursive: Boolean = false,
@@ -53,31 +51,8 @@ data class Environment(
     ): Result<T> = result {
         val (names, expressions) = bindings.map(Binding::asPair).unzip()
         var environment = copy(values = values.toMutableMap())
-        evaluationStrategy.bindAllAs(expressions, environment, { index, value ->
-            if (isRecursive) {
-                environment.values[names[index]] = value
-            } else {
-                environment = Environment(evaluationStrategy, environment.values.toMutableMap().also {
-                    it[names[index]] = value
-                })
-            }
-            environment
-        }) {
-            continuation(environment)
-        }.bind()
-    }
-
-    context(interpreter: SmallStepInterpreter<T>)
-    @JvmName("bindLocalSmallStep")
-    fun <T> bindLocal(
-        bindings: List<Binding>,
-        isRecursive: Boolean = false,
-        continuation: Continuation<Either<List<Expr>, Environment>, T>
-    ): Result<T> = result {
-        val (names, expressions) = bindings.map(Binding::asPair).unzip()
-        var environment = copy(values = values.toMutableMap())
-        evaluationStrategy.bindAllAs(expressions, environment, { index, value ->
-            if (value is Value) {
+        evaluationStrategy.bindAllAs(expressions, environment, { index, _, value ->
+            result {
                 if (isRecursive) {
                     environment.values[names[index]] = value
                 } else {
@@ -85,8 +60,35 @@ data class Environment(
                         it[names[index]] = value
                     })
                 }
+                environment
             }
-            environment
+        }) {
+            continuation(environment)
+        }.bind()
+    }
+
+    context(interpreter: StepInterpreter<T>)
+    @JvmName("bindLocalStep")
+    fun <T> bindLocal(
+        bindings: List<Binding>,
+        isRecursive: Boolean = false,
+        continuation: Continuation<Either<List<Expr>, Environment>, T>
+    ): Result<T> = result {
+        val (names, expressions) = bindings.map(Binding::asPair).unzip()
+        var environment = copy(values = values.toMutableMap())
+        evaluationStrategy.bindAllAs(expressions, environment, { index, _, value ->
+            result {
+                if (value is Value) {
+                    if (isRecursive) {
+                        environment.values[names[index]] = value
+                    } else {
+                        environment = Environment(evaluationStrategy, environment.values.toMutableMap().also {
+                            it[names[index]] = value
+                        })
+                    }
+                }
+                environment
+            }
         }) { results ->
             val resultValues = results.filterIsInstance<Value>()
             if (resultValues.size != results.size) {
